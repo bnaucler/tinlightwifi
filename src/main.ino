@@ -17,9 +17,10 @@
 		Keep the button pressed for three seconds.
 
 		TODO:
-		* Make HTML a little more neat
-		* Create reset function
+		* Make HTML look neat
+		* Make reset not cause http timeout
 		* Actually make this thing to a lamp
+		* GUI color themes?
 
 */
 
@@ -27,6 +28,7 @@
 #include <ESP8266WiFi.h>
 #include <string.h>
 #include <EEPROM.h>
+#include <Adafruit_NeoPixel.h>
 
 // WiFi definitions
 const char*				APSSID = "tinlight";	// SSID when acting as AP
@@ -37,7 +39,7 @@ const int				pixelPin = 2;
 const int				buttonPin = 0;
 
 // EEPROM
-const int				eepromSize = 512;		// 512B for ESP8266
+const int				eepromSize = 512;		// 512B for ESP01
 const int				isClientAddr = 1;
 const int				SSIDStrlenAddr = 2;
 const int				pskStrlenAddr = 3;
@@ -45,16 +47,19 @@ const int				SSIDAddr = 10;
 const int				pskAddr = 50;
 const int				isClientData = 9;
 
-/* int 					isClient; */
+// Pixel constants and variables
+const int				numPixels = 13;
+
+int						color1, color2, color3;
+
+// Timer
+unsigned long			timer;
+
+// Enable Neopixel strip
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(numPixels, pixelPin, NEO_GRB + NEO_KHZ800);
 
 // Enable HTTPD
 WiFiServer server(80);
-
-void clearEEPROM()
-{
-	for(int a = 0; a < eepromSize; a++) { EEPROM.write(a, 0);}
-	EEPROM.commit();
-}
 
 void setupClient() {
 
@@ -68,7 +73,6 @@ void setupClient() {
 	for(int a = 0; a <= pskStrlen; a++) { psk[a] = EEPROM.read(pskAddr + a); }
 
 	WiFi.begin(ssid, psk);
-
 }
 
 void setupAP() {
@@ -76,43 +80,89 @@ void setupAP() {
 	WiFi.softAP(APSSID, APpsk);
 }
 
-String htmlSettings() {
+String makeHTML(char *title, String data) {
 
 	String htmlData = "HTTP/1.1 200 OK\r\n";
 	htmlData += "Content-Type: text/html\r\n\r\n";
 	htmlData += "<!DOCTYPE HTML>\r\n";
-	htmlData += "<HTML><HEAD><TITLE>Set Wifi Data</TITLE> </HEAD>\r\n";
-	htmlData += "<BODY BGCOLOR=111111 TEXT=FFFFFF>\r\n";
-	htmlData += "<FORM ACTION=setwifi METHOD=GET>\r\n";
+	htmlData += "<HTML><HEAD>";
+	htmlData += "<STYLE TYPE=\"text/css\">\r\n";
+	htmlData += "a {text-decoration: none;}\r\n";
+	htmlData += "a:link {color: red;}\r\n";
+	htmlData += "a:visited {color: red;}\r\n";
+	htmlData += "a:hover {color: yellow;}\r\n";
+	htmlData += "a:active {color: yellow;}\r\n";
+	htmlData += "</STYLE>\r\n";
+	htmlData += "<TITLE>\r\n";
+	htmlData += title;
+	htmlData += "</TITLE></HEAD>\r\n";
+	htmlData += "<BODY BGCOLOR=500000 TEXT=FFFFFF>\r\n";
+	htmlData += "<FONT FACE=sans-serif>\r\n";
+	htmlData += "<CENTER>\r\n";
+	htmlData += "<BR><BR>\r\n";
+	htmlData += "<DIV STYLE=\"width:60%; background: #111111\">\r\n";
 	htmlData += "<BR>\r\n";
-	htmlData += "SSID (Network name):<BR>\r\n";
-	htmlData += "<INPUT TYPE=TEXT NAME=ssid VALUE=""><BR>\r\n";
-	htmlData += "<BR>\r\n";
-	htmlData += "Password:<BR>\r\n";
-	htmlData += "<INPUT TYPE=TEXT NAME=psk VALUE=""><BR><BR>\r\n";
-	htmlData += "<INPUT TYPE=SUBMIT VALUE=Submit>\r\n";
-	htmlData += "</FORM></BODY></HTML>\r\n";
+	htmlData += data;
+	htmlData += "<BR><BR></CENTER>\r\n";
+	htmlData += "</DIV></FONT></BODY></HTML>\r\n";
 
+	return htmlData;
+}
+
+String htmlReset() {
+
+	char title[] = "Restored to factory default";
+
+	for(int a = 0; a < eepromSize; a++) { EEPROM.write(a, 0);}
+	EEPROM.commit();
+
+	String data = "Your tinLight has been reset to factory defaults.<BR><BR>\r\n";
+	data += "Please restart and connect to the wireless network '";
+	data += APSSID;
+	data += "' with password '";
+	data += APpsk;
+	data += "'<BR>When connected, point your browser to "; 
+	data += "<A HREF=\"http://192.168.4.1\">http://192.168.4.1</A>\r\n";
+
+	String htmlData = makeHTML(title, data);
+	return htmlData;
+}
+
+String htmlSettings() {
+
+	char title[] = "Change Wifi configuration";
+
+	String data = "<FORM ACTION=setwifi METHOD=GET>\r\n";
+	data += "<BR>\r\n";
+	data += "SSID (Network name):<BR>\r\n";
+	data += "<INPUT TYPE=TEXT NAME=ssid><BR>\r\n";
+	data += "<BR>\r\n";
+	data += "Password:<BR>\r\n";
+	data += "<INPUT TYPE=TEXT NAME=psk><BR><BR>\r\n";
+	data += "<INPUT TYPE=SUBMIT VALUE=Submit>\r\n";
+
+	// DEBUG
+	for(int a=0; a <= numPixels; a++) {
+		strip.setPixelColor(a,255,0,0);
+	}
+	strip.show();
+
+	String htmlData = makeHTML(title, data);
 	return htmlData;
 }
 
 String htmlIndex(char *input) {
 
-	String htmlData = "HTTP/1.1 200 OK\r\n";
-	htmlData += "Content-Type: text/html\r\n\r\n";
-	htmlData += "<!DOCTYPE HTML>\r\n";
-	htmlData += "<HTML><HEAD><TITLE>tinLight configuration</TITLE> </HEAD>\r\n";
-	htmlData += "<BODY BGCOLOR=111111 TEXT=FFFFFF>\r\n";
-	htmlData += "Hello. This is the main screen.\r\n";
-	htmlData += "<BR><BR><BR>\r\n";
-	htmlData += "Debug data:<BR>\r\n";
-	htmlData += input;
-	/* htmlData += "<BR>\r\n"; */
-	/* htmlData += isClient; */
-	htmlData += "<BR><BR><BR>\r\n";
-	htmlData += "<A HREF=wificonfig>WiFi configuration</A>\r\n";
-	htmlData += "</BODY></HTML>\r\n";
+	char title[] = "tinLight";
 
+	String data = "Hello.<BR>\r\n";
+	data += "Welcome to tinLight<BR>\r\n";
+	data += "<BR><BR>\r\n";
+	data += "<BR><BR><BR>\r\n";
+	data += "| <A HREF=wificonfig>WiFi configuration</A> | \r\n";
+	data += "<A HREF=reset>Reset to factory defaults</A> |\r\n";
+
+	String htmlData = makeHTML(title, data);
 	return htmlData;
 }
 
@@ -120,8 +170,9 @@ String htmlSetWifi(char *ssid, char *psk) {
 
 	int SSIDStrlen = strlen(ssid);
 	int pskStrlen = strlen(psk);
+	char title[] = "Configuration updated";
 
-	// Write Wifi data to all registers
+	// Write Wifi data to all EEPROM registers
 	EEPROM.write(SSIDStrlenAddr, SSIDStrlen);
 	EEPROM.write(pskStrlenAddr, pskStrlen);
 	EEPROM.write(isClientAddr, isClientData);
@@ -130,19 +181,14 @@ String htmlSetWifi(char *ssid, char *psk) {
 	EEPROM.commit();
 
 	// Return a response
-	String htmlData = "HTTP/1.1 200 OK\r\n";
-	htmlData += "Content-Type: text/html\r\n\r\n";
-	htmlData += "<!DOCTYPE HTML>\r\n";
-	htmlData += "<HTML><HEAD><TITLE>tinLight configuration</TITLE></HEAD>\r\n";
-	htmlData += "<BODY BGCOLOR=111111 TEXT=FFFFFF>\r\n";
-	htmlData += "Your configuration has been updated.<BR>\r\n";
-	htmlData += "Restart tinLight for changes to have effect.<BR><BR>\r\n";
-	htmlData += "New SSID:<BR>\r\n";
-	htmlData += ssid;
-	htmlData += "<BR>New Password:<BR>\r\n";
-	htmlData += psk;
-	htmlData += "</BODY></HTML>\r\n";
+	String data = "Your configuration has been updated.<BR>\r\n";
+	data += "Restart tinLight for changes to have effect.<BR><BR>\r\n";
+	data += "New SSID:<BR>\r\n";
+	data += ssid;
+	data += "<BR>New Password:<BR>\r\n";
+	data += psk;
 
+	String htmlData = makeHTML(title, data);
 	return htmlData;
 }
 
@@ -169,6 +215,8 @@ String getHtml(char *inputString) {
 
 	} else if(strcmp(page, "wificonfig") == 0) {
 		htmlData = htmlSettings(); 
+	} else if(strcmp(page, "reset") == 0) {
+		htmlData = htmlReset(); 
 	} else { 
 		htmlData = htmlIndex(page);
 	}
@@ -176,28 +224,38 @@ String getHtml(char *inputString) {
 	return htmlData;
 }
 
-void setup() 
-{
+void setup() {
+
+	// Set pin directions
 	pinMode(pixelPin, OUTPUT);
 	pinMode(buttonPin, INPUT);
 
+	// Enable EEPROM
 	EEPROM.begin(eepromSize);
 
+	// Enable pixel strip
+	strip.begin();
+	strip.show();
+
+	// Verify if Wifi data has been set
 	if(EEPROM.read(isClientAddr) == isClientData) { setupClient(); }
 	else { setupAP(); }
+
 	server.begin();
 }
 
-void loop() 
-{
+void loop() {
+
 	WiFiClient client = server.available();
 	if (!client) { return; }
 
 	String request = client.readStringUntil('\r');
+
+	// Convert string to char array to avoid conversion errors
 	int reqStrlen = request.length() + 1;
 	char reqChar[reqStrlen];
-
 	request.toCharArray(reqChar, reqStrlen); 
+	
 	client.flush();
 
 	String htmlData = getHtml(reqChar);
