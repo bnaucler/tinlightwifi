@@ -19,15 +19,18 @@
 		TODO:
 		* Make HTML look neat
 		* Make reset not cause http timeout
+		* OTA functionality
+			http://esp8266.github.io/Arduino/versions/2.1.0-rc2/doc/ota_updates/ota_updates.html
 		* Actually make this thing to a lamp
 		* GUI color themes?
 
 */
 
 #include <Arduino.h>
-#include <ESP8266WiFi.h>
 #include <string.h>
 #include <EEPROM.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266httpUpdate.h>
 #include <Adafruit_NeoPixel.h>
 
 // WiFi definitions
