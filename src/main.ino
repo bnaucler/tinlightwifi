@@ -2,25 +2,31 @@
 		tinLight WiFi 0.2
 		By Björn Westerberg Nauclér
 		mail@bnaucler.se
-		
+
 		Absolutely no rights reserved.
 		This code is far from functional!
 
 		USAGE:
 		At first launch the tinLight acts as an access point
 		and creates a WiFi network with SSID "tinlight".
-		Connect to this SSID and connect to http://192.168.4.1/ 
+		Connect to this SSID and connect to http://192.168.4.1/
 		You can now enter details for your own WiFi network.
 		The tinLight will reboot and gain an IP address.
-		
+
 		HARDWARE RESET:
 		Keep the button pressed for three seconds.
 
 		TODO:
+		* Change page selector to switch statement?
+		* Convert to ESP8266WebServer.h
+		* Sysinfo / settings / reset on one page
 		* Make HTML look neat
 		* Make reset not cause http timeout
-		* OTA functionality
-			http://esp8266.github.io/Arduino/versions/2.1.0-rc2/doc/ota_updates/ota_updates.html
+			- And a confirm button?
+		* Split into multiple .ino files
+			- Share with tinLight
+			- Header file?
+		* Implement OTA functionality
 		* Actually make this thing to a lamp
 		* GUI color themes?
 
@@ -37,21 +43,28 @@
 const char*				APSSID = "tinlight";	// SSID when acting as AP
 const char*				APpsk = "tinlight";		// PSK when acting as AP
 
+// Identifiers
+#define				fwVersion 1
+#define				serialNumber 1
+
+// General settings
+#define				httpInterval 5
+
 // Pin definitions
-const int				pixelPin = 2;
-const int				buttonPin = 0;
+#define				pixelPin 2
+#define				buttonPin 0
 
 // EEPROM
-const int				eepromSize = 512;		// 512B for ESP01
-const int				isClientAddr = 1;
-const int				SSIDStrlenAddr = 2;
-const int				pskStrlenAddr = 3;
-const int				SSIDAddr = 10;
-const int				pskAddr = 50;
-const int				isClientData = 9;
+#define				eepromSize 512		// 512B for ESP0
+#define				isClientAddr 1
+#define				SSIDStrlenAddr 2
+#define				pskStrlenAddr 3
+#define				SSIDAddr 10
+#define				pskAddr 50
+#define				isClientData 9
 
 // Pixel constants and variables
-const int				numPixels = 13;
+#define				numPixels 13
 
 int						color1, color2, color3;
 
@@ -124,12 +137,27 @@ String htmlReset() {
 	data += APSSID;
 	data += "' with password '";
 	data += APpsk;
-	data += "'<BR>When connected, point your browser to "; 
+	data += "'<BR>When connected, point your browser to ";
 	data += "<A HREF=\"http://192.168.4.1\">http://192.168.4.1</A>\r\n";
 
 	String htmlData = makeHTML(title, data);
 	return htmlData;
 }
+
+String htmlUpdate() {
+
+	char title[] = "Firmware update";
+
+	String data = "At some point the update function will live here.<BR><BR>\r\n";
+	data += "<BR>";
+	data += "Current firmware version: ";
+	data += fwVersion;
+	data += "\r\n";
+
+	String htmlData = makeHTML(title, data);
+	return htmlData;
+}
+
 
 String htmlSettings() {
 
@@ -163,7 +191,8 @@ String htmlIndex(char *input) {
 	data += "<BR><BR>\r\n";
 	data += "<BR><BR><BR>\r\n";
 	data += "| <A HREF=wificonfig>WiFi configuration</A> | \r\n";
-	data += "<A HREF=reset>Reset to factory defaults</A> |\r\n";
+	data += "<A HREF=reset>Reset to defaults</A> |\r\n";
+	data += "<A HREF=update>Check for updates</A> |\r\n";
 
 	String htmlData = makeHTML(title, data);
 	return htmlData;
@@ -203,7 +232,7 @@ String getHtml(char *inputString) {
 
 	parser = strtok_r(inputString, delimit, &tmpPtr);
 	parser = strtok_r(NULL, delimit, &tmpPtr);
-	page = parser;	
+	page = parser;
 
 	if(strcmp(page, "setwifi") == 0) {
 		parser = strtok_r(NULL, delimit, &tmpPtr);
@@ -217,10 +246,12 @@ String getHtml(char *inputString) {
 		htmlData = htmlSetWifi(arg1, arg2);
 
 	} else if(strcmp(page, "wificonfig") == 0) {
-		htmlData = htmlSettings(); 
+		htmlData = htmlSettings();
 	} else if(strcmp(page, "reset") == 0) {
-		htmlData = htmlReset(); 
-	} else { 
+		htmlData = htmlReset();
+	} else if(strcmp(page, "update") == 0) {
+		htmlData = htmlUpdate();
+	} else {
 		htmlData = htmlIndex(page);
 	}
 
@@ -249,19 +280,20 @@ void setup() {
 
 void loop() {
 
-	WiFiClient client = server.available();
-	if (!client) { return; }
+	if(millis() > timer + httpInterval) {
+		WiFiClient client = server.available();
+		if (!client) { return; }
 
-	String request = client.readStringUntil('\r');
+		String request = client.readStringUntil('\r');
 
-	// Convert string to char array to avoid conversion errors
-	int reqStrlen = request.length() + 1;
-	char reqChar[reqStrlen];
-	request.toCharArray(reqChar, reqStrlen); 
-	
-	client.flush();
+		// Convert string to char array to avoid conversion errors
+		int reqStrlen = request.length() + 1;
+		char reqChar[reqStrlen];
+		request.toCharArray(reqChar, reqStrlen);
 
-	String htmlData = getHtml(reqChar);
-	client.print(htmlData);
-	delay(1);
+		client.flush();
+
+		String htmlData = getHtml(reqChar);
+		client.print(htmlData);
+	}
 }
